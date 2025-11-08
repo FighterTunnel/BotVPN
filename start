@@ -38,17 +38,14 @@ print_rainbow() {
     echo -e "$reset"
 }
 cek_status() {
-    status=$(systemctl is-active --quiet $1 && echo "aktif" || echo "nonaktif")
-    if [ "$status" = "aktif" ]; then
-        echo -e "${green}GOOD${neutral}"
-    else
-        echo -e "${red}BAD${neutral}"
-    fi
+    pm2 status | grep -q sellvpn && echo "aktif" || echo "nonaktif"
 }
 
 setup_bot() {
+    timedatectl set-timezone Asia/Jakarta || echo -e "${red}Failed to set timezone to Jakarta${neutral}"
+    
     if ! dpkg -s nodejs >/dev/null 2>&1; then
-        curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - || echo -e "${red}Failed to download Node.js setup${neutral}"
+        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - || echo -e "${red}Failed to download Node.js setup${neutral}"
         apt-get install -y nodejs || echo -e "${red}Failed to install Node.js${neutral}"
         npm install -g npm@latest
     else
@@ -56,7 +53,7 @@ setup_bot() {
     fi
 
     if [ ! -f /root/BotVPN/app.js ]; then
-        git clone https://github.com/FighterTunnel/BotVPN.git /root/BotVPN
+        git clone https://github.com/AutoFTbot/BotVPN.git /root/BotVPN
     fi
 
     if ! npm list --prefix /root/BotVPN express telegraf axios moment sqlite3 >/dev/null 2>&1; then
@@ -91,64 +88,44 @@ server_app() {
             echo -e "${red}Admin ID tidak boleh kosong. Silakan coba lagi.${neutral}"
         fi
     done
-        while [ -z "$namastore" ]; do
+    while [ -z "$namastore" ]; do
         read -p "Masukkan nama store: " namastore
         if [ -z "$namastore" ]; then
             echo -e "${red}Nama store tidak boleh kosong. Silakan coba lagi.${neutral}"
         fi
     done
-        while [ -z "$keypaydisini" ]; do
-        read -p "Masukkan Keypaydisni: " keypaydisini
-        if [ -z "$keypaydisini" ]; then
-            echo -e "${red}Nama keypaydisini tidak boleh kosong. Silakan coba lagi.${neutral}"
+    while [ -z "$dataqris" ]; do
+        read -p "Masukkan DATA QRIS: " dataqris
+        if [ -z "$dataqris" ]; then
+            echo -e "${red}DATA QRIS tidak boleh kosong. Silakan coba lagi.${neutral}"
+        fi
+    done
+    while [ -z "$username_orkut" ]; do
+        read -p "Masukkan USERNAME ORDERKUOTA: " username_orkut
+        if [ -z "$username_orkut" ]; then
+            echo -e "${red}USERNAME ORDERKUOTA tidak boleh kosong. Silakan coba lagi.${neutral}"
+        fi
+    done
+    while [ -z "$auth_token" ]; do
+        read -p "Masukkan AUTH TOKEN: " auth_token
+        if [ -z "$auth_token" ]; then
+            echo -e "${red}AUTH TOKEN tidak boleh kosong. Silakan coba lagi.${neutral}"
+        fi
+    done
+    while [ -z "$groupid" ]; do
+        read -p "Masukkan GROUP ID (ID grup Telegram, contoh: -1001234567890): " groupid
+        if [ -z "$groupid" ]; then
+            echo -e "${red}GROUP ID tidak boleh kosong. Silakan coba lagi.${neutral}"
         fi
     done
     rm -f /root/BotVPN/.vars.json
-    echo "{
-  \"BOT_TOKEN\": \"$token\",
-  \"USER_ID\": \"$adminid\",
-  \"PAYDISINI_KEY\": \"$keypaydisini\",
-  \"NAMA_STORE\": \"$namastore\",
-  \"PORT\": \"50123\"
-}" >/root/BotVPN/.vars.json
-    cat >/etc/systemd/system/sellvpn.service <<EOF
-[Unit]
-Description=App Bot sellvpn Service
-After=network.target
+    echo "{\n  \"BOT_TOKEN\": \"$token\",\n  \"USER_ID\": \"$adminid\",\n  \"NAMA_STORE\": \"$namastore\",\n  \"GROUP_ID\": \"$groupid\",\n  \"PORT\": \"6969\",\n  \"DATA_QRIS\": \"$dataqris\",\n  \"USERNAME_ORKUT\": \"$username_orkut\",\n  \"AUTH_TOKEN\": \"$auth_token\"\n}" >/root/BotVPN/.vars.json
 
-[Service]
-ExecStart=/bin/bash /usr/bin/sellvpn
-Restart=always
-User=root
-Environment=PATH=/usr/bin:/usr/local/bin
-Environment=NODE_ENV=production
-WorkingDirectory=/usr/bin
+    pm2 start /root/BotVPN/app.js --name sellvpn --env production -- --token "$token" --adminid "$adminid" --namastore "$namastore" --dataqris "$dataqris" --username_orkut "$username_orkut" --auth_token "$auth_token"
+    pm2 save
 
-[Install]
-WantedBy=multi-user.target
-EOF
-echo '#!/bin/bash' >/usr/bin/server_sellvpn
-echo "USER_ID=$adminid" >>/usr/bin/server_sellvpn
-echo "BOT_TOKEN=$token" >>/usr/bin/server_sellvpn
-echo 'curl -s -F chat_id="$USER_ID" -F document=@"/root/BotVPN/sellvpn.db" "https://api.telegram.org/bot$BOT_TOKEN/sendDocument" >/dev/null 2>&1' >>/usr/bin/server_sellvpn
-echo '#!/bin/bash' >/usr/bin/sellvpn
-echo "cd /root/BotVPN" >>/usr/bin/sellvpn
-echo "node app.js" >>/usr/bin/sellvpn
-chmod +x /usr/bin/server_sellvpn
-chmod +x /usr/bin/sellvpn
-cat >/etc/cron.d/server_sellvpn <<EOF
-SHELL=/bin/sh
-PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-0 */6 * * * root /usr/bin/server_sellvpn
-EOF
-
-    systemctl daemon-reload >/dev/null 2>&1
-    systemctl enable sellvpn.service >/dev/null 2>&1
-    systemctl start sellvpn.service >/dev/null 2>&1
-    systemctl restart sellvpn.service >/dev/null 2>&1
-    service cron restart
     printf "\033[5A\033[0J"
-    echo -e "       Status Server is "$(cek_status sellvpn.service)""
+    echo -e "       Status Server is "$(cek_status)""
     echo -e "${orange}─────────────────────────────────────────${neutral}"
     echo -e "${green}Bot has been installed and running.${neutral}"
     echo -e "${green}Type ${bold_white}/start${neutral} or ${bold_white}menu${neutral} in the telegram bot${neutral}"
